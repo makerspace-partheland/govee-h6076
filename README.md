@@ -24,7 +24,7 @@ Unterstützt ist die Platine `H6076迭代_MAIN_V1.0` mit Aufdruck `2024/12/02` u
 
 ## ESPHome for Govee H6076
 
-The H6076 is sold as “Govee RGBICW Smart Stehlampe Basic”.
+The H6076 is sold as [Govee RGBICW Smart Floor Lamp Basic](https://uk.govee.com/products/govee-rgbicw-smart-corner-floor-lamp).
 
 The `govee_h6076` component provides local control of the Govee H6076 floor lamp through ESPHome and Home Assistant. It supports RGB, warm white, brightness, seven color segments, scenes and music modes. Sleep mode and a Bluetooth proxy are also included.
 
