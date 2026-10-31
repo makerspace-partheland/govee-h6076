@@ -231,13 +231,10 @@ async def govee_music_to_code(config, effect_id):
     parent = await cg.get_variable(config[CONF_GOVEE_H6076_ID])
     cg.add(var.set_parent(parent))
     cg.add(var.set_mode(config[CONF_MODE]))
-    if CONF_CUSTOM_BRIGHTNESS_SHAPE in config:
-        cg.add(var.set_custom_brightness_shape(config[CONF_CUSTOM_BRIGHTNESS_SHAPE]))
-    if CONF_CUSTOM_SPOT_LENGTH in config:
-        cg.add(var.set_custom_spot_length(config[CONF_CUSTOM_SPOT_LENGTH]))
-    if CONF_CUSTOM_ACTION_TYPE in config:
-        cg.add(var.set_custom_action_type(config[CONF_CUSTOM_ACTION_TYPE]))
     for key in (
+        CONF_CUSTOM_BRIGHTNESS_SHAPE,
+        CONF_CUSTOM_SPOT_LENGTH,
+        CONF_CUSTOM_ACTION_TYPE,
         CONF_CUSTOM_BRIGHTNESS_MIN,
         CONF_CUSTOM_BRIGHTNESS_MAX,
         CONF_CUSTOM_DIRECTION,
@@ -246,17 +243,13 @@ async def govee_music_to_code(config, effect_id):
         CONF_CUSTOM_COLOR_ORDER,
         CONF_CUSTOM_COLOR_CHANGE,
         CONF_CUSTOM_COLOR_DISTRIBUTION,
+        CONF_PIANO_BARS,
+        CONF_GRADIENT,
+        CONF_BACKGROUND_COLOR,
+        CONF_BACKGROUND_BRIGHTNESS,
     ):
         if key in config:
             cg.add(getattr(var, f"set_{key}")(config[key]))
-    if CONF_PIANO_BARS in config:
-        cg.add(var.set_piano_bars(config[CONF_PIANO_BARS]))
-    if CONF_GRADIENT in config:
-        cg.add(var.set_gradient(config[CONF_GRADIENT]))
-    if CONF_BACKGROUND_COLOR in config:
-        cg.add(var.set_background_color(config[CONF_BACKGROUND_COLOR]))
-    if CONF_BACKGROUND_BRIGHTNESS in config:
-        cg.add(var.set_background_brightness(config[CONF_BACKGROUND_BRIGHTNESS]))
     if CONF_FIXED_COLOR in config:
         cg.add(var.set_color(config[CONF_FIXED_COLOR]))
     if CONF_CALM in config:

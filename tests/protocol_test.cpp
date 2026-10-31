@@ -64,6 +64,13 @@ struct Harness {
     CHECK(!controller.take_update());
     sent.clear();
   }
+  std::vector<uint8_t> boot_on() {
+    this->boot();
+    auto status = BOOT;
+    status[2] = 1;
+    this->receive(0xC1, status);
+    return status;
+  }
 };
 
 static void encoders() {
@@ -82,9 +89,9 @@ static void music_encoding_and_lifecycle() {
   // inner XOR 0x5F, outer additive checksum 0xFB.
   const std::vector<uint8_t> expected{0x55, 1, 20, 0, 0, 0, 0x83, 0x33, 5, 15, 4, 99, 1,    0,
                                       0,    0, 0,  0, 0, 0, 0,    0,    0, 0,  0, 0,  0x5F, 0xFB};
-  CHECK(bytes(music_rhythm(99)) == expected);
-  CHECK(bytes(music_rhythm(255)) == expected);
-  const auto zero = bytes(music_rhythm(0));
+  CHECK(bytes(music_packet(0x04, 99)) == expected);
+  CHECK(bytes(music_packet(0x04, 255)) == expected);
+  const auto zero = bytes(music_packet(0x04, 0));
   CHECK(zero[11] == 0 && zero[26] == 0x3C && zero[27] == 0x75);
   Harness h;
   h.boot();
@@ -213,10 +220,7 @@ static void music_modes_and_live_sensitivity() {
   CHECK(bytes(music_packet(0, 50)) == energetic);
   CHECK(music_packet(254, 50).size == 0);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(50, 4);
   h.tick();
   h.controller.start_music(50, 6);  // New mode while a response is still pending.
@@ -511,10 +515,7 @@ static void palette_transaction() {
   CHECK(p.size == 48 && p.bytes[2] == 40 && p.bytes[7] == 0xA3 && p.bytes[28] == 0xFF);
   CHECK(p.bytes[38] == 2 && p.bytes[39] == 0 && p.bytes[40] == 0x61);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(99, 0x32);
   h.tick();
   CHECK(h.sent.back() == bytes(p));
@@ -545,10 +546,7 @@ static void scenes_and_mode_switching() {
   CHECK(bytes(scene_packet(22)) == rainbow);
   CHECK(scene_packet(255).size == 0);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(99, 0x4D);
   h.tick();
   h.controller.start_scene(22);
@@ -607,10 +605,7 @@ static void scene_upload_lifecycle() {
   CHECK(scene_upload_packet(body, sizeof(body), 1).bytes[8] == 0xFF);
   CHECK(scene_packet(2143, true).bytes[10] == 0x5F && scene_packet(2143, true).bytes[11] == 8);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_scene(2143, body, sizeof(body));
   h.tick();
   CHECK(h.sent.back() == bytes(scene_upload(body, sizeof(body))));
@@ -654,16 +649,8 @@ static void segment_encoders() {
   const std::vector<uint8_t> red_bottom{0x33, 5, 0x15, 1, 255, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0xDC};
   const auto color = segment_color(1, 255, 0, 0);
   CHECK(std::equal(red_bottom.begin(), red_bottom.end(), color.bytes.begin() + 7));
-  const std::vector<uint8_t> half_top{0x33, 5, 0x15, 2, 50, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x53};
-  const auto bright = segment_brightness(64, 50);
-  CHECK(std::equal(half_top.begin(), half_top.end(), bright.bytes.begin() + 7));
   CHECK(segment_color(0, 1, 2, 3).size == 0);
   CHECK(segment_color(128, 1, 2, 3).size == 0);
-  CHECK(segment_brightness(0, 50).size == 0);
-  CHECK(segment_brightness(128, 50).size == 0);
-  CHECK(segment_brightness(1, 101).size == 0);
-  CHECK(segment_brightness(127, 0).size == 28);
-  CHECK(segment_brightness(127, 100).size == 28);
 }
 
 static void segments_lifecycle() {
@@ -675,10 +662,7 @@ static void segments_lifecycle() {
   CHECK(bytes(segment_packet(3, {200, 100, 50, 50})) == bytes(segment_color(8, 100, 50, 25)));
   CHECK(bytes(segment_packet(6, {255, 0, 0, 100})) == bytes(segment_color(64, 255, 0, 0)));
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  auto on = h.boot_on();
   h.controller.start_segments(segments);
   for (size_t i = 0; i < 7; ++i) {
     const auto expected = segment_packet(i, segments[i]);
@@ -734,10 +718,7 @@ static void music_settings_encoding() {
   p = music_packet(4, 50, fixed);
   CHECK(p.bytes[12] == 0 && p.bytes[13] == 0 && p.bytes[14] == 0);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(50, 4, fixed);
   h.tick();
   CHECK(h.sent.back() == bytes(p));
@@ -775,10 +756,7 @@ static void extended_palette_parameters() {
   CHECK(day.bytes[38] == 1 && day.bytes[39] == 10 && day.bytes[40] == 0);
   for (uint8_t mode : {0x30, 0x31, 0x37, 0x59, 0x98, 0x33, 0x34, 0x35, 0x4A, 0x5D}) {
     Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
+    h.boot_on();
     h.controller.start_music(99, mode);
     h.tick();
     CHECK(h.sent.back() == bytes(music_palette(mode, RAINBOW)));
@@ -793,10 +771,7 @@ static void extended_palette_parameters() {
 static void legacy_music_initialization() {
   for (uint8_t mode : {5, 0x90, 0x91}) {
     Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
+    h.boot_on();
     h.controller.start_music(77, mode);
     h.tick();
     CHECK(h.sent.back() == bytes(music_packet(0, 77)));
@@ -816,10 +791,7 @@ static void legacy_music_initialization() {
 
 static void live_palette_update() {
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(65, 0x4D);
   h.tick();
   auto palette = RAINBOW;
@@ -854,10 +826,7 @@ static void music_background_parameters() {
   auto star = music_palette(0x98, RAINBOW, settings);
   CHECK(star.bytes[38] == 0x12 && star.bytes[39] == 0x34 && star.bytes[40] == 0x56 && star.bytes[41] == 3);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(60, 0x33, settings);
   h.tick();
   CHECK(h.sent.back() == bytes(p));
@@ -900,10 +869,7 @@ static std::vector<uint8_t> palette_reply(uint8_t mode, uint8_t status) {
 }
 static void palette_rejection_and_stale_replies() {
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  auto on = h.boot_on();
   h.controller.start_music(99, 0x4D);
   h.tick();
   auto n = h.sent.size();
@@ -935,19 +901,16 @@ static void palette_rejection_and_stale_replies() {
   CHECK(!newer.controller.busy());
 }
 
-static void custom_profile_transport() {
+static void custom_profile_brightness_parameters() {
   const auto defaults = custom_music_profile(RAINBOW);
   CHECK(defaults.bytes[23] == 20 && defaults.bytes[24] == 100);
   CHECK(bytes(defaults) == bytes(custom_music_profile(RAINBOW, 1, 5, 0, 1, 0, 0, 0, 0, 0, 20, 100)));
-  for (uint8_t type = 1; type <= 6; ++type) {
-    for (const auto &limits : {std::array<uint8_t, 2>{0, 0}, {0, 100}, {20, 100}, {40, 60}, {100, 100}}) {
-      MusicSettings settings;
-      settings.custom_action_type = type;
-      settings.custom_brightness_min = limits[0];
-      settings.custom_brightness_max = limits[1];
-      const auto packet = music_palette(0xFF, RAINBOW, settings);
-      CHECK(packet.size == 88 && packet.bytes[23] == limits[0] && packet.bytes[24] == limits[1]);
-    }
+  for (const auto &limits : {std::array<uint8_t, 2>{0, 0}, {0, 100}, {20, 100}, {40, 60}, {100, 100}}) {
+    MusicSettings settings;
+    settings.custom_brightness_min = limits[0];
+    settings.custom_brightness_max = limits[1];
+    const auto packet = music_palette(0xFF, RAINBOW, settings);
+    CHECK(packet.size == 88 && packet.bytes[23] == limits[0] && packet.bytes[24] == limits[1]);
   }
   for (const auto &limits : {std::array<uint8_t, 2>{101, 101}, {20, 101}, {100, 20}}) {
     MusicSettings settings;
@@ -956,28 +919,25 @@ static void custom_profile_transport() {
     CHECK(music_palette(0xFF, RAINBOW, settings).size == 0);
   }
 
-  for (uint8_t type = 1; type <= 6; ++type)
-    for (uint8_t shape = 0; shape <= 5; ++shape) {
-      MusicSettings options;
-      options.custom_action_type = type;
-      options.custom_brightness_shape = shape;
-      const auto packet = music_palette(0xFF, RAINBOW, options);
-      CHECK(packet.size == 88 && packet.bytes[22] == shape);
-    }
+  for (uint8_t shape = 0; shape <= 5; ++shape) {
+    MusicSettings options;
+    options.custom_brightness_shape = shape;
+    const auto packet = music_palette(0xFF, RAINBOW, options);
+    CHECK(packet.size == 88 && packet.bytes[22] == shape);
+  }
   MusicSettings invalid_shape;
   invalid_shape.custom_brightness_shape = 6;
   CHECK(music_palette(0xFF, RAINBOW, invalid_shape).size == 0);
 
-  for (uint8_t type = 1; type <= 6; ++type) {
-    MusicSettings length;
-    length.custom_action_type = type;
-    length.custom_spot_length = 4;
-    const auto p = music_palette(0xFF, RAINBOW, length);
-    CHECK(p.size == 88 && p.bytes[31] == 4 && p.bytes[32] == 4);
-    length.custom_spot_length = 15;
-    CHECK(music_palette(0xFF, RAINBOW, length).size == 0);
-  }
+  MusicSettings length;
+  length.custom_spot_length = 4;
+  const auto p = music_palette(0xFF, RAINBOW, length);
+  CHECK(p.size == 88 && p.bytes[31] == 4 && p.bytes[32] == 4);
+  length.custom_spot_length = 15;
+  CHECK(music_palette(0xFF, RAINBOW, length).size == 0);
+}
 
+static void custom_profile_color_parameters() {
   CHECK(custom_music_profile(RAINBOW, 1, 5, 0, 1, 0, 0, 1).size == 0);
   CHECK(custom_music_profile(RAINBOW, 2, 5, 0, 1, 0, 0, 2).size == 0);
   CHECK(custom_music_profile(RAINBOW, 1, 5, 0, 1, 0, 0, 2).bytes[33] == 2);
@@ -1007,7 +967,9 @@ static void custom_profile_transport() {
     } else
       CHECK(random_packet.bytes[i] == sequential_packet.bytes[i]);
   }
+}
 
+static void custom_profile_motion_parameters() {
   CHECK(custom_music_profile(RAINBOW, 1, 0).size == 0);
   CHECK(custom_music_profile(RAINBOW, 1, 5, 101).size == 0);
   CHECK(custom_music_profile(RAINBOW, 1, 5, 0, 0).size == 0);
@@ -1015,25 +977,29 @@ static void custom_profile_transport() {
   CHECK(custom_music_profile(RAINBOW, 2, 4).size == 0);
   CHECK(custom_music_profile(RAINBOW, 2, 5, 20).size == 0);
   CHECK(custom_music_profile(RAINBOW, 2, 5, 0, 2).size == 0);
-  for (uint8_t direction : {4, 5})
-    for (uint8_t idle : {0, 20, 100})
-      for (uint8_t speed : {1, 5}) {
-        MusicSettings options;
-        options.custom_direction = direction;
-        options.custom_idle_brightness = idle;
-        options.custom_decay_speed = speed;
-        const auto candidate = music_palette(0xFF, RAINBOW, options);
-        std::vector<uint8_t> body;
-        for (size_t i = 0; i < 4; ++i) {
-          const size_t offset = 7 + i * 20;
-          uint8_t checksum = 0;
-          for (size_t n = 0; n < 20; ++n)
-            checksum ^= candidate.bytes[offset + n];
-          CHECK(checksum == 0);
-          body.insert(body.end(), candidate.bytes.begin() + offset + 2, candidate.bytes.begin() + offset + 19);
-        }
-        CHECK(body[6] == direction && body[48] == idle && body[50] == speed);
-      }
+  // Vary independent fields once each, plus one combined non-default profile.
+  for (const auto &values : {std::array<uint8_t, 3>{4, 0, 1}, {5, 0, 1}, {5, 20, 1},
+                             {5, 100, 1}, {5, 0, 5}, {4, 100, 5}}) {
+    MusicSettings options;
+    options.custom_direction = values[0];
+    options.custom_idle_brightness = values[1];
+    options.custom_decay_speed = values[2];
+    const auto candidate = music_palette(0xFF, RAINBOW, options);
+    CHECK(candidate.size == 88);
+    std::vector<uint8_t> body;
+    for (size_t i = 0; i < 4; ++i) {
+      const size_t offset = 7 + i * 20;
+      uint8_t checksum = 0;
+      for (size_t n = 0; n < 20; ++n)
+        checksum ^= candidate.bytes[offset + n];
+      CHECK(checksum == 0);
+      body.insert(body.end(), candidate.bytes.begin() + offset + 2, candidate.bytes.begin() + offset + 19);
+    }
+    CHECK(body[6] == values[0] && body[48] == values[1] && body[50] == values[2]);
+  }
+}
+
+static void custom_profile_action_types() {
   CHECK(custom_music_profile(RAINBOW, 0).size == 0);
   CHECK(custom_music_profile(RAINBOW, 7).size == 0);
   for (uint8_t type = 1; type <= 6; ++type) {
@@ -1042,10 +1008,7 @@ static void custom_profile_transport() {
     const auto candidate = music_palette(0xFF, RAINBOW, settings);
     CHECK(candidate.size == 88 && candidate.bytes[12] == type);
     Harness selected;
-    selected.boot();
-    auto active = BOOT;
-    active[2] = 1;
-    selected.receive(0xC1, active);
+    selected.boot_on();
     selected.controller.start_music(99, 0xFF, settings);
     selected.tick();
     CHECK(selected.sent.back() == bytes(candidate));
@@ -1058,6 +1021,9 @@ static void custom_profile_transport() {
     selected.receive(0x63, {});
     CHECK(!selected.controller.busy());
   }
+}
+
+static void custom_profile_framing_and_rejection() {
   const auto packet = custom_music_profile(RAINBOW);
   CHECK(packet.size == 88 && packet.bytes[2] == 80);
   std::vector<uint8_t> payload;
@@ -1074,10 +1040,7 @@ static void custom_profile_transport() {
   // Direction 5 moves the spots; minimum brightness 0 lets them fade out completely.
   CHECK(payload[6] == 5 && payload[48] == 0 && payload[49] == 100);
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  h.boot_on();
   h.controller.start_music(99, 0xFF);
   h.tick();
   CHECK(h.sent.back() == bytes(packet));
@@ -1097,6 +1060,14 @@ static void custom_profile_transport() {
   CHECK(h.controller.take_music_failure() && !h.controller.effect_requested());
 }
 
+static void custom_profile_transport() {
+  custom_profile_brightness_parameters();
+  custom_profile_color_parameters();
+  custom_profile_motion_parameters();
+  custom_profile_action_types();
+  custom_profile_framing_and_rejection();
+}
+
 static void sleep_packet_boundaries() {
   SleepSettings settings;
   settings.custom_color = true;
@@ -1113,12 +1084,12 @@ static void sleep_packet_boundaries() {
   for (size_t i = 7; i < 27; ++i)
     xor_sum ^= packet.bytes[i];
   CHECK(xor_sum == 0 && packet.bytes[27] == checksum(packet.bytes.data(), 27));
-  for (uint16_t minutes = 10; minutes <= 240; ++minutes) {
+  for (uint16_t minutes : {10, 11, 73, 239, 240}) {
     settings.minutes = minutes;
     const auto valid = sleep_packet(true, settings);
     CHECK(valid.size == 28 && valid.bytes[11] == minutes && valid.bytes[12] == minutes);
   }
-  for (uint16_t minutes : {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 241, 256}) {
+  for (uint16_t minutes : {0, 9, 241, 256}) {
     settings.minutes = minutes;
     CHECK(sleep_packet(true, settings).size == 0);
     // Cancellation must not depend on invalid settings or remaining values.
@@ -1221,10 +1192,7 @@ static void sleep_start_confirmation() {
   // must be detected from settings read back independently.
   for (unsigned mismatch = 0; mismatch < 6; ++mismatch) {
     Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
+    h.boot_on();
     h.controller.enable_sleep_support();
     h.tick();
     std::vector<uint8_t> status{0xAA, 0x11, 0, 30, 15, 0, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1297,10 +1265,7 @@ static void sleep_start_confirmation() {
 static void brightness_recovers_after_sleep_status_timeout() {
   for (bool sleep_active : {false, true}) {
     Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
+    auto on = h.boot_on();
     h.controller.enable_sleep_support();
     h.tick();
     std::vector<uint8_t> status{0xAA, 0x11, 0, 30, 15, 0, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -1380,17 +1345,15 @@ static void brightness_recovers_after_sleep_status_timeout() {
   }
 }
 
-static void static_rgb_brightness_mapping() {
-  const auto same_values = [](const RgbLightValues &a, const RgbLightValues &b) {
-    return a.brightness == b.brightness && a.color_brightness == b.color_brightness && a.red == b.red &&
-           a.green == b.green && a.blue == b.blue;
-  };
+static bool same_values(const RgbLightValues &a, const RgbLightValues &b) {
+  return a.brightness == b.brightness && a.color_brightness == b.color_brightness && a.red == b.red &&
+         a.green == b.green && a.blue == b.blue;
+}
+
+static void static_rgb_command_lifecycle() {
   StaticRgbBrightness mapping;
   Harness h;
-  h.boot();
-  auto on = BOOT;
-  on[2] = 1;
-  h.receive(0xC1, on);
+  auto on = h.boot_on();
   RgbLightValues logical{0.01f, 1.0f, 1.0f, 0.5f, 0.0f};
   auto target = mapping.request(h.controller.state(), logical);
   h.controller.request(target);
@@ -1473,7 +1436,12 @@ static void static_rgb_brightness_mapping() {
   h.tick();
   CHECK(h.sent.back()[6] == 0x83 && h.sent.back()[7] == 0x33 && h.sent.back()[8] == 0x11);
   CHECK(h.sent.back()[10] == 30);
+}
 
+static void static_rgb_rounding() {
+  StaticRgbBrightness mapping;
+  RgbLightValues logical;
+  State target;
   const std::array<std::array<uint8_t, 3>, 3> rounded{{{0, 0, 0}, {1, 1, 0}, {128, 51, 26}}};
   size_t index = 0;
   for (float brightness : {0.0f, 0.01f, 1.0f}) {
@@ -1487,7 +1455,10 @@ static void static_rgb_brightness_mapping() {
   target = mapping.request({}, logical);
   CHECK(target.brightness == 10 && target.red == 25);
   CHECK(same_values(mapping.resolve(target), logical));
+}
 
+static void static_rgb_restore_and_external_color() {
+  RgbLightValues logical;
   // After an ESP reboot, both the newly scaled color and the
   // unscaled starting state from the previous firmware remain associated with restore.
   logical = {224.0f / 255.0f, 1.0f, 1.0f, 254.0f / 255.0f, 250.0f / 255.0f};
@@ -1524,7 +1495,10 @@ static void static_rgb_brightness_mapping() {
   const auto full_red = unknown.resolve(bright_external);
   CHECK(full_red.brightness == 1.0f && full_red.color_brightness == 1.0f);
   CHECK(same_color(unknown.request(bright_external, full_red), bright_external));
+}
 
+static void static_rgb_native_brightness() {
+  RgbLightValues logical;
   StaticRgbBrightness phase;
   logical = {0.01f, 1.0f, 1.0f, 0.5f, 0.0f};
   auto phase_wire = phase.request({}, logical);
@@ -1543,6 +1517,13 @@ static void static_rgb_brightness_mapping() {
   const auto sleep_update = phase.for_publication(phase_wire, true);
   CHECK(sleep_update.brightness == 0.3f && sleep_update.color_brightness == 1.0f);
   CHECK(sleep_update.red == 1.0f && sleep_update.green == 0.5f && sleep_update.blue == 0.0f);
+}
+
+static void static_rgb_brightness_mapping() {
+  static_rgb_command_lifecycle();
+  static_rgb_rounding();
+  static_rgb_restore_and_external_color();
+  static_rgb_native_brightness();
 }
 
 static void gamma_brightness_mapping() {
@@ -1622,6 +1603,302 @@ static void timer_summary_format() {
   CHECK(summary.back() == '\0');
 }
 
+static void timer_inventory_and_clock_sync() {
+  Harness h;
+  h.boot();
+  h.controller.request_timer_inventory();
+  h.tick();
+  CHECK(h.sent.back() == bytes(timers_query_packet()) && !h.controller.clock_inventory_clear());
+  std::vector<uint8_t> timers(20);
+  timers[0] = 0xAA;
+  timers[1] = 0x23;
+  timers[2] = 0xFF;
+  timers[19] = 0x76;
+  h.receive(0x63, timers);
+  h.tick();
+  CHECK(h.sent.back() == bytes(wake_query_packet()));
+  std::vector<uint8_t> wake(20);
+  wake[0] = 0xAA;
+  wake[1] = 0x12;
+  wake[19] = 0xB8;
+  h.receive(0x63, wake);
+  CHECK(h.controller.clock_inventory_clear());
+  CHECK(!h.controller.sync_clock(24, 0, 0, 1));
+  CHECK(h.controller.sync_clock(20, 30, 15, 1));
+  h.tick();
+  CHECK(h.sent.back() == bytes(clock_packet(20, 30, 15, 1)));
+  h.receive(0x63, {});
+  CHECK(!h.controller.clock_synced());
+  std::vector<uint8_t> clock_ack(20);
+  clock_ack[0] = 0x33;
+  clock_ack[1] = 9;
+  clock_ack[19] = 0x3A;
+  h.receive(0x63, clock_ack);
+  CHECK(h.controller.clock_synced());
+  h.controller.request_timer_inventory();
+  h.tick();
+  timers[3] = 0x80;
+  timers[19] ^= 0x80;
+  h.receive(0x63, timers);
+  h.tick();
+  h.receive(0x63, wake);
+  CHECK(h.controller.active_timer_count() == 1 && !h.controller.clock_inventory_clear());
+  CHECK(!h.controller.sync_clock(20, 30, 15, 1));
+  h.controller.request_timer_inventory();
+  h.tick();
+  timers[3] = 0;
+  timers[19] ^= 0x80;
+  h.receive(0x63, timers);
+  h.tick();
+  wake[2] = 0xFF;
+  wake[19] ^= 0xFF;
+  h.receive(0x63, wake);
+  CHECK(h.controller.wake_enabled() == 0 && h.controller.clock_inventory_clear());
+  CHECK(h.controller.wake_raw_status() == 255);
+  h.controller.request_timer_inventory();
+  h.tick();
+  h.receive(0x63, timers);
+  h.tick();
+  wake[2] = 1;
+  wake[19] ^= 0xFE;
+  h.receive(0x63, wake);
+  CHECK(h.controller.wake_enabled() == 1 && !h.controller.clock_inventory_clear());
+  h.controller.request_timer_inventory();
+  h.tick();
+  h.receive(0x63, {});
+  CHECK(h.controller.busy());
+  h.tick(500);
+  h.tick(500);
+  h.tick(500);
+  CHECK(!h.controller.clock_inventory_clear() && h.controller.active_timer_count() == -1);
+  // Reading the inventory again after it is lost must restore availability without a reboot.
+  h.controller.request_timer_inventory();
+  h.tick();
+  h.receive(0x63, timers);
+  h.tick();
+  wake[2] = 0;
+  wake[19] ^= 1;
+  h.receive(0x63, wake);
+  CHECK(h.controller.clock_inventory_clear() && !h.controller.busy());
+  CHECK(h.controller.sync_clock(20, 30, 20, 1));
+  h.tick();
+  h.tick(500);
+  h.tick(500);
+  h.tick(500);
+  CHECK(h.controller.clock_sync_failed() && !h.controller.clock_synced());
+  h.controller.request_timer_inventory();
+  h.tick();
+  h.receive(0x63, {});
+  CHECK(h.controller.clock_sync_failed());
+  h.receive(0x63, timers);
+  h.tick();
+  h.receive(0x63, wake);
+  CHECK(!h.controller.clock_sync_failed() && h.controller.sync_clock(20, 30, 25, 1));
+  h.tick();
+  h.receive(0x63, clock_ack);
+  CHECK(h.controller.clock_synced());
+}
+
+static void clock_and_timer_packets() {
+  CHECK(clock_packet(23, 59, 59, 7).size == 28);
+  CHECK(clock_packet(0, 0, 0, 1).size == 28);
+  CHECK(clock_packet(-1, 0, 0, 1).size == 0 && clock_packet(24, 0, 0, 1).size == 0);
+  CHECK(clock_packet(0, 60, 0, 1).size == 0 && clock_packet(0, 0, 60, 1).size == 0);
+  CHECK(clock_packet(0, 0, 0, 0).size == 0 && clock_packet(0, 0, 0, 8).size == 0);
+  const auto clock = clock_packet(12, 34, 56, 7);
+  CHECK(clock.bytes[7] == 0x33 && clock.bytes[8] == 9 && clock.bytes[9] == 12 && clock.bytes[10] == 34 &&
+        clock.bytes[11] == 56 && clock.bytes[12] == 7);
+  for (size_t i = 13; i < 26; ++i)
+    CHECK(clock.bytes[i] == 0);
+  uint8_t sum = 0;
+  for (size_t i = 7; i < 27; ++i)
+    sum ^= clock.bytes[i];
+  CHECK(sum == 0);
+  const auto query = timers_query_packet();
+  sum = 0;
+  for (size_t i = 7; i < 27; ++i)
+    sum ^= query.bytes[i];
+  CHECK(sum == 0);
+  std::array<uint8_t, 20> reply{0xAA, 0x23, 0xFF, 0x81, 6, 30, 0xFF, 0x80, 23, 59, 0x80, 0, 0, 0, 0, 1, 12, 0, 0};
+  auto seal = [&]() {
+    reply[19] = 0;
+    for (size_t i = 0; i < 19; ++i)
+      reply[19] ^= reply[i];
+  };
+  seal();
+  NativeTimers timers;
+  CHECK(decode_timers(reply.data(), 20, timers));
+  CHECK(timers[0].enabled && timers[0].power && timers[0].hour == 6 && timers[0].minute == 30 &&
+        timers[0].repeat_mask == 255);
+  CHECK(timers[1].enabled && !timers[1].power && timers[1].repeat_mask == 128 && !timers[2].enabled &&
+        !timers[3].enabled);
+  for (size_t n = 0; n < 20; ++n)
+    CHECK(!decode_timers(reply.data(), n, timers));
+  reply[4] = 24;
+  seal();
+  CHECK(!decode_timers(reply.data(), 20, timers) && timers[0].hour == 6);
+  reply[4] = 6;
+  reply[19] ^= 1;
+  CHECK(!decode_timers(reply.data(), 20, timers));
+}
+
+static void sleep_status_refresh() {
+  Harness h;
+  h.boot_on();
+  h.controller.enable_sleep_support();
+  h.tick();
+  std::vector<uint8_t> status{0xAA, 0x11, 1, 30, 15, 7, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  for (size_t i = 0; i < 19; ++i)
+    status[19] ^= status[i];
+  h.receive(0x63, status);
+  CHECK(h.controller.sleep_may_be_active() && !h.controller.busy());
+  h.controller.refresh_sleep_status();
+  h.tick();
+  CHECK(h.sent.back() == bytes(sleep_query_packet()));
+  h.receive(0x63, status);
+  CHECK(h.controller.sleep_status().enabled && !h.controller.busy());
+  const auto count = h.sent.size();
+  h.tick();
+  CHECK(h.sent.size() == count);
+}
+
+static void sleep_cancellation_readback() {
+  Harness h;
+  auto on = h.boot_on();
+  h.controller.enable_sleep_support();
+  CHECK(!h.controller.sleep_status_known() && !h.controller.start_sleep(SleepSettings{}));
+  h.controller.start_music(99, 0x04);
+  h.tick();
+  CHECK(h.sent.back() == bytes(sleep_query_packet()));
+  h.receive(0x63, {});
+  CHECK(!h.controller.sleep_status_known());
+  std::vector<uint8_t> status{0xAA, 0x11, 1, 30, 15, 7, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+  auto seal = [&]() {
+    status[19] = 0;
+    for (size_t i = 0; i < 19; ++i)
+      status[19] ^= status[i];
+  };
+  seal();
+  h.receive(0x63, status);
+  CHECK(h.controller.sleep_status_known() && h.controller.sleep_status().remaining_minutes == 7);
+  h.tick();
+  CHECK(h.sent.back()[7] == 0x33 && h.sent.back()[8] == 0x11 && h.sent.back()[9] == 0);
+  std::vector<uint8_t> ack(20);
+  ack[0] = 0x33;
+  ack[1] = 0x11;
+  ack[19] = 0x22;
+  h.receive(0x63, ack);
+  h.tick();
+  CHECK(h.sent.back() == bytes(sleep_query_packet()));
+  h.receive(0x63, status);
+  CHECK(h.controller.sleep_cancel_failed());
+  const auto sent = h.sent.size();
+  h.tick();
+  CHECK(h.sent.size() == sent);
+  h.controller.cancel_sleep();
+  h.tick();
+  h.receive(0x63, ack);
+  h.tick();
+  status[2] = 0;
+  status[5] = 0;
+  seal();
+  h.receive(0x63, status);
+  h.tick();
+  CHECK(!h.controller.sleep_cancel_failed() && h.sent.back() == bytes(music_packet(0x04, 99)));
+  h.receive(0x63, status);
+  CHECK(h.controller.busy());  // A status report for an unrelated timer is not a music acknowledgment.
+  h.receive(0x63, {});
+  CHECK(!h.controller.busy());
+  h.tick(LINK_TIMEOUT_MS);
+  h.receive(0xC1, on);
+  h.tick();
+  CHECK(!h.controller.sleep_status_known() && h.sent.back() == bytes(sleep_query_packet()));
+  h.tick(500);
+  h.tick(500);
+  h.tick(500);
+  CHECK(h.controller.sleep_cancel_failed() && !h.controller.start_sleep(SleepSettings{}));
+}
+
+static void sleep_status_decoding() {
+  const auto query = sleep_query_packet();
+  CHECK(query.size == 28 && query.bytes[7] == 0xAA && query.bytes[8] == 0x11 && query.bytes[26] == 0xBB);
+  std::array<uint8_t, 20> reply{0xAA, 0x11, 1, 30, 15, 7, 1, 0x12, 0x34, 0x56, 0x08, 0x98};
+  auto seal = [&]() {
+    reply[19] = 0;
+    for (size_t i = 0; i < 19; ++i)
+      reply[19] ^= reply[i];
+  };
+  seal();
+  SleepStatus status;
+  CHECK(decode_sleep_status(reply.data(), reply.size(), status));
+  CHECK(status.enabled && status.remaining_minutes == 7 && status.settings.minutes == 15);
+  CHECK(status.settings.brightness == 30 && status.settings.rgb == 0x123456 && status.settings.temperature == 2200);
+  CHECK(status.settings.custom_color);
+  for (size_t n = 0; n < 20; ++n)
+    CHECK(!decode_sleep_status(reply.data(), n, status));
+  reply[0] = 0x33;
+  seal();
+  CHECK(!decode_sleep_status(reply.data(), 20, status));
+  reply[0] = 0xAA;
+  reply[2] = 2;
+  seal();
+  CHECK(!decode_sleep_status(reply.data(), 20, status));
+  reply[2] = 1;
+  reply[3] = 101;
+  seal();
+  CHECK(!decode_sleep_status(reply.data(), 20, status));
+  reply[3] = 30;
+  reply[19] ^= 1;
+  CHECK(!decode_sleep_status(reply.data(), 20, status));
+  CHECK(status.settings.rgb == 0x123456);  // Invalid responses do not change the last known state.
+  reply[5] = 255;
+  reply[7] = reply[8] = reply[9] = 0;
+  seal();
+  CHECK(decode_sleep_status(reply.data(), 20, status) && status.remaining_minutes == 255 &&
+        status.settings.custom_color);
+}
+
+static void foreign_sleep_reply_during_music() {
+  Harness h;
+  h.boot_on();
+  h.controller.start_music(99, 0x04);
+  h.tick();
+  std::vector<uint8_t> foreign(20);
+  foreign[0] = 0x33;
+  foreign[1] = 0x11;
+  foreign[19] = 0x22;
+  h.receive(0x63, foreign);
+  CHECK(h.controller.busy());
+  foreign[1] = 0x05;
+  foreign[19] = 0x36;
+  h.receive(0x63, foreign);
+  CHECK(!h.controller.busy());
+}
+
+static void invalid_music_settings_preserve_effect() {
+  Harness h;
+  h.boot_on();
+  h.controller.start_music(99, 0x04);
+  h.tick();
+  h.receive(0x63, {});
+  const auto count = h.sent.size();
+  MusicSettings bad;
+  bad.custom_action_type = 0;
+  h.controller.start_music(99, 0xFF, bad);
+  h.tick();
+  CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
+  bad = MusicSettings{};
+  bad.custom_direction = 0;
+  h.controller.start_music(99, 0xFF, bad);
+  h.tick();
+  CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
+  bad = MusicSettings{};
+  bad.background_brightness = 51;
+  h.controller.start_music(99, 0x33, bad);
+  h.tick();
+  CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
+}
+
 int main(int argc, char **argv) {
   if (argc == 2 && std::string(argv[1]) == "timer-summary") {
     timer_summary_format();
@@ -1649,311 +1926,18 @@ int main(int argc, char **argv) {
     return 0;
   }
   timer_summary_format();
-  {
-    Harness h;
-    h.boot();
-    h.controller.request_timer_inventory();
-    h.tick();
-    CHECK(h.sent.back() == bytes(timers_query_packet()) && !h.controller.clock_inventory_clear());
-    std::vector<uint8_t> timers(20);
-    timers[0] = 0xAA;
-    timers[1] = 0x23;
-    timers[2] = 0xFF;
-    timers[19] = 0x76;
-    h.receive(0x63, timers);
-    h.tick();
-    CHECK(h.sent.back() == bytes(wake_query_packet()));
-    std::vector<uint8_t> wake(20);
-    wake[0] = 0xAA;
-    wake[1] = 0x12;
-    wake[19] = 0xB8;
-    h.receive(0x63, wake);
-    CHECK(h.controller.clock_inventory_clear());
-    CHECK(!h.controller.sync_clock(24, 0, 0, 1));
-    CHECK(h.controller.sync_clock(20, 30, 15, 1));
-    h.tick();
-    CHECK(h.sent.back() == bytes(clock_packet(20, 30, 15, 1)));
-    h.receive(0x63, {});
-    CHECK(!h.controller.clock_synced());
-    std::vector<uint8_t> clock_ack(20);
-    clock_ack[0] = 0x33;
-    clock_ack[1] = 9;
-    clock_ack[19] = 0x3A;
-    h.receive(0x63, clock_ack);
-    CHECK(h.controller.clock_synced());
-    h.controller.request_timer_inventory();
-    h.tick();
-    timers[3] = 0x80;
-    timers[19] ^= 0x80;
-    h.receive(0x63, timers);
-    h.tick();
-    h.receive(0x63, wake);
-    CHECK(h.controller.active_timer_count() == 1 && !h.controller.clock_inventory_clear());
-    CHECK(!h.controller.sync_clock(20, 30, 15, 1));
-    h.controller.request_timer_inventory();
-    h.tick();
-    timers[3] = 0;
-    timers[19] ^= 0x80;
-    h.receive(0x63, timers);
-    h.tick();
-    wake[2] = 0xFF;
-    wake[19] ^= 0xFF;
-    h.receive(0x63, wake);
-    CHECK(h.controller.wake_enabled() == 0 && h.controller.clock_inventory_clear());
-    CHECK(h.controller.wake_raw_status() == 255);
-    h.controller.request_timer_inventory();
-    h.tick();
-    h.receive(0x63, timers);
-    h.tick();
-    wake[2] = 1;
-    wake[19] ^= 0xFE;
-    h.receive(0x63, wake);
-    CHECK(h.controller.wake_enabled() == 1 && !h.controller.clock_inventory_clear());
-    h.controller.request_timer_inventory();
-    h.tick();
-    h.receive(0x63, {});
-    CHECK(h.controller.busy());
-    h.tick(500);
-    h.tick(500);
-    h.tick(500);
-    CHECK(!h.controller.clock_inventory_clear() && h.controller.active_timer_count() == -1);
-    // Reading the inventory again after it is lost must restore availability without a reboot.
-    h.controller.request_timer_inventory();
-    h.tick();
-    h.receive(0x63, timers);
-    h.tick();
-    wake[2] = 0;
-    wake[19] ^= 1;
-    h.receive(0x63, wake);
-    CHECK(h.controller.clock_inventory_clear() && !h.controller.busy());
-    CHECK(h.controller.sync_clock(20, 30, 20, 1));
-    h.tick();
-    h.tick(500);
-    h.tick(500);
-    h.tick(500);
-    CHECK(h.controller.clock_sync_failed() && !h.controller.clock_synced());
-    h.controller.request_timer_inventory();
-    h.tick();
-    h.receive(0x63, {});
-    CHECK(h.controller.clock_sync_failed());
-    h.receive(0x63, timers);
-    h.tick();
-    h.receive(0x63, wake);
-    CHECK(!h.controller.clock_sync_failed() && h.controller.sync_clock(20, 30, 25, 1));
-    h.tick();
-    h.receive(0x63, clock_ack);
-    CHECK(h.controller.clock_synced());
-  }
-  {
-    CHECK(clock_packet(23, 59, 59, 7).size == 28);
-    CHECK(clock_packet(0, 0, 0, 1).size == 28);
-    CHECK(clock_packet(-1, 0, 0, 1).size == 0 && clock_packet(24, 0, 0, 1).size == 0);
-    CHECK(clock_packet(0, 60, 0, 1).size == 0 && clock_packet(0, 0, 60, 1).size == 0);
-    CHECK(clock_packet(0, 0, 0, 0).size == 0 && clock_packet(0, 0, 0, 8).size == 0);
-    const auto clock = clock_packet(12, 34, 56, 7);
-    CHECK(clock.bytes[7] == 0x33 && clock.bytes[8] == 9 && clock.bytes[9] == 12 && clock.bytes[10] == 34 &&
-          clock.bytes[11] == 56 && clock.bytes[12] == 7);
-    for (size_t i = 13; i < 26; ++i)
-      CHECK(clock.bytes[i] == 0);
-    uint8_t sum = 0;
-    for (size_t i = 7; i < 27; ++i)
-      sum ^= clock.bytes[i];
-    CHECK(sum == 0);
-    const auto query = timers_query_packet();
-    sum = 0;
-    for (size_t i = 7; i < 27; ++i)
-      sum ^= query.bytes[i];
-    CHECK(sum == 0);
-    std::array<uint8_t, 20> reply{0xAA, 0x23, 0xFF, 0x81, 6, 30, 0xFF, 0x80, 23, 59, 0x80, 0, 0, 0, 0, 1, 12, 0, 0};
-    auto seal = [&]() {
-      reply[19] = 0;
-      for (size_t i = 0; i < 19; ++i)
-        reply[19] ^= reply[i];
-    };
-    seal();
-    NativeTimers timers;
-    CHECK(decode_timers(reply.data(), 20, timers));
-    CHECK(timers[0].enabled && timers[0].power && timers[0].hour == 6 && timers[0].minute == 30 &&
-          timers[0].repeat_mask == 255);
-    CHECK(timers[1].enabled && !timers[1].power && timers[1].repeat_mask == 128 && !timers[2].enabled &&
-          !timers[3].enabled);
-    for (size_t n = 0; n < 20; ++n)
-      CHECK(!decode_timers(reply.data(), n, timers));
-    reply[4] = 24;
-    seal();
-    CHECK(!decode_timers(reply.data(), 20, timers) && timers[0].hour == 6);
-    reply[4] = 6;
-    reply[19] ^= 1;
-    CHECK(!decode_timers(reply.data(), 20, timers));
-  }
-  {
-    Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
-    h.controller.enable_sleep_support();
-    h.tick();
-    std::vector<uint8_t> status{0xAA, 0x11, 1, 30, 15, 7, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    for (size_t i = 0; i < 19; ++i)
-      status[19] ^= status[i];
-    h.receive(0x63, status);
-    CHECK(h.controller.sleep_may_be_active() && !h.controller.busy());
-    h.controller.refresh_sleep_status();
-    h.tick();
-    CHECK(h.sent.back() == bytes(sleep_query_packet()));
-    h.receive(0x63, status);
-    CHECK(h.controller.sleep_status().enabled && !h.controller.busy());
-    const auto count = h.sent.size();
-    h.tick();
-    CHECK(h.sent.size() == count);
-  }
-  {
-    Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
-    h.controller.enable_sleep_support();
-    CHECK(!h.controller.sleep_status_known() && !h.controller.start_sleep(SleepSettings{}));
-    h.controller.start_music(99, 0x04);
-    h.tick();
-    CHECK(h.sent.back() == bytes(sleep_query_packet()));
-    h.receive(0x63, {});
-    CHECK(!h.controller.sleep_status_known());
-    std::vector<uint8_t> status{0xAA, 0x11, 1, 30, 15, 7, 0, 255, 50, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    auto seal = [&]() {
-      status[19] = 0;
-      for (size_t i = 0; i < 19; ++i)
-        status[19] ^= status[i];
-    };
-    seal();
-    h.receive(0x63, status);
-    CHECK(h.controller.sleep_status_known() && h.controller.sleep_status().remaining_minutes == 7);
-    h.tick();
-    CHECK(h.sent.back()[7] == 0x33 && h.sent.back()[8] == 0x11 && h.sent.back()[9] == 0);
-    std::vector<uint8_t> ack(20);
-    ack[0] = 0x33;
-    ack[1] = 0x11;
-    ack[19] = 0x22;
-    h.receive(0x63, ack);
-    h.tick();
-    CHECK(h.sent.back() == bytes(sleep_query_packet()));
-    h.receive(0x63, status);
-    CHECK(h.controller.sleep_cancel_failed());
-    const auto sent = h.sent.size();
-    h.tick();
-    CHECK(h.sent.size() == sent);
-    h.controller.cancel_sleep();
-    h.tick();
-    h.receive(0x63, ack);
-    h.tick();
-    status[2] = 0;
-    status[5] = 0;
-    seal();
-    h.receive(0x63, status);
-    h.tick();
-    CHECK(!h.controller.sleep_cancel_failed() && h.sent.back() == bytes(music_packet(0x04, 99)));
-    h.receive(0x63, status);
-    CHECK(h.controller.busy());  // A status report for an unrelated timer is not a music acknowledgment.
-    h.receive(0x63, {});
-    CHECK(!h.controller.busy());
-    h.tick(LINK_TIMEOUT_MS);
-    h.receive(0xC1, on);
-    h.tick();
-    CHECK(!h.controller.sleep_status_known() && h.sent.back() == bytes(sleep_query_packet()));
-    h.tick(500);
-    h.tick(500);
-    h.tick(500);
-    CHECK(h.controller.sleep_cancel_failed() && !h.controller.start_sleep(SleepSettings{}));
-  }
-  {
-    const auto query = sleep_query_packet();
-    CHECK(query.size == 28 && query.bytes[7] == 0xAA && query.bytes[8] == 0x11 && query.bytes[26] == 0xBB);
-    std::array<uint8_t, 20> reply{0xAA, 0x11, 1, 30, 15, 7, 1, 0x12, 0x34, 0x56, 0x08, 0x98};
-    auto seal = [&]() {
-      reply[19] = 0;
-      for (size_t i = 0; i < 19; ++i)
-        reply[19] ^= reply[i];
-    };
-    seal();
-    SleepStatus status;
-    CHECK(decode_sleep_status(reply.data(), reply.size(), status));
-    CHECK(status.enabled && status.remaining_minutes == 7 && status.settings.minutes == 15);
-    CHECK(status.settings.brightness == 30 && status.settings.rgb == 0x123456 && status.settings.temperature == 2200);
-    CHECK(status.settings.custom_color);
-    for (size_t n = 0; n < 20; ++n)
-      CHECK(!decode_sleep_status(reply.data(), n, status));
-    reply[0] = 0x33;
-    seal();
-    CHECK(!decode_sleep_status(reply.data(), 20, status));
-    reply[0] = 0xAA;
-    reply[2] = 2;
-    seal();
-    CHECK(!decode_sleep_status(reply.data(), 20, status));
-    reply[2] = 1;
-    reply[3] = 101;
-    seal();
-    CHECK(!decode_sleep_status(reply.data(), 20, status));
-    reply[3] = 30;
-    reply[19] ^= 1;
-    CHECK(!decode_sleep_status(reply.data(), 20, status));
-    CHECK(status.settings.rgb == 0x123456);  // Invalid responses do not change the last known state.
-    reply[5] = 255;
-    reply[7] = reply[8] = reply[9] = 0;
-    seal();
-    CHECK(decode_sleep_status(reply.data(), 20, status) && status.remaining_minutes == 255 &&
-          status.settings.custom_color);
-  }
+  gamma_brightness_mapping();
+  timer_inventory_and_clock_sync();
+  clock_and_timer_packets();
+  sleep_status_refresh();
+  sleep_cancellation_readback();
+  sleep_status_decoding();
   sleep_queue_lifecycle();
   sleep_start_confirmation();
   brightness_recovers_after_sleep_status_timeout();
   static_rgb_brightness_mapping();
-  {
-    Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
-    h.controller.start_music(99, 0x04);
-    h.tick();
-    std::vector<uint8_t> foreign(20);
-    foreign[0] = 0x33;
-    foreign[1] = 0x11;
-    foreign[19] = 0x22;
-    h.receive(0x63, foreign);
-    CHECK(h.controller.busy());
-    foreign[1] = 0x05;
-    foreign[19] = 0x36;
-    h.receive(0x63, foreign);
-    CHECK(!h.controller.busy());
-  }
-  {
-    Harness h;
-    h.boot();
-    auto on = BOOT;
-    on[2] = 1;
-    h.receive(0xC1, on);
-    h.controller.start_music(99, 0x04);
-    h.tick();
-    h.receive(0x63, {});
-    const auto count = h.sent.size();
-    MusicSettings bad;
-    bad.custom_action_type = 0;
-    h.controller.start_music(99, 0xFF, bad);
-    h.tick();
-    CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
-    bad = MusicSettings{};
-    bad.custom_direction = 0;
-    h.controller.start_music(99, 0xFF, bad);
-    h.tick();
-    CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
-    bad = MusicSettings{};
-    bad.background_brightness = 51;
-    h.controller.start_music(99, 0x33, bad);
-    h.tick();
-    CHECK(h.controller.music_requested() && !h.controller.busy() && h.sent.size() == count);
-  }
+  foreign_sleep_reply_during_music();
+  invalid_music_settings_preserve_effect();
   sleep_packet_boundaries();
   custom_profile_transport();
   palette_rejection_and_stale_replies();

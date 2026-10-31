@@ -462,14 +462,6 @@ inline Packet segment_color(uint8_t mask, uint8_t red, uint8_t green, uint8_t bl
     frame[19] ^= frame[i];
   return encode(0x83, frame, sizeof(frame));
 }
-inline Packet segment_brightness(uint8_t mask, uint8_t percent) {
-  if (mask == 0 || mask > 0x7F || percent > 100)
-    return {};
-  uint8_t frame[20]{0x33, 5, 0x15, 2, percent, mask};
-  for (size_t i = 0; i < 19; ++i)
-    frame[19] ^= frame[i];
-  return encode(0x83, frame, sizeof(frame));
-}
 
 struct Segment {
   uint8_t red{255}, green{255}, blue{255}, brightness{100};
@@ -485,8 +477,6 @@ inline Packet segment_packet(size_t index, const Segment &segment) {
   };
   return segment_color(uint8_t(1U << index), scale(segment.red), scale(segment.green), scale(segment.blue));
 }
-
-inline Packet music_rhythm(uint8_t sensitivity) { return music_packet(0x04, sensitivity); }
 
 class Parser {
  public:
